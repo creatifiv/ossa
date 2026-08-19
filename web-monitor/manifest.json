@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Web Monitor",
+  "version": "1.0",
+  "description": "Monitors a webpage for content changes.",
+  "permissions": [
+    "alarms",
+    "storage",
+    "notifications"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.svg"
+  },
+  "icons": {
+    "48": "icon.svg"
+  },
+  "options_page": "options.html"
+}
