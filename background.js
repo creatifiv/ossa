@@ -13,7 +13,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 async function checkPage() {
-    const { targetUrl, discordWebhook, cachedContent } = await chrome.storage.sync.get(['targetUrl', 'discordWebhook', 'cachedContent']);
+    const { targetUrl, discordWebhook } = await chrome.storage.sync.get(['targetUrl', 'discordWebhook']);
+    const { cachedContent } = await chrome.storage.local.get('cachedContent');
     
     if (!targetUrl) return;
 
@@ -33,7 +34,7 @@ async function checkPage() {
             }
         }
         
-        chrome.storage.sync.set({ cachedContent: text });
+        chrome.storage.local.set({ cachedContent: text });
     } catch (e) {
         console.error('Check failed', e);
     }

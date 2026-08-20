@@ -21,7 +21,7 @@ toggleBtn.addEventListener('click', () => {
 });
 
 clearCacheBtn.addEventListener('click', () => {
-    chrome.storage.sync.remove('cachedContent', () => {
+    chrome.storage.local.remove('cachedContent', () => {
         alert('Cache cleared');
     });
 });
