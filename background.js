@@ -43,7 +43,7 @@ async function checkPage() {
 function notifyUser(url) {
     chrome.notifications.create({
         type: 'basic',
-        iconUrl: 'icon.svg',
+        // iconUrl: 'icon.svg',
         title: 'Web Monitor',
         message: `Content changed on ${url}`
     });
