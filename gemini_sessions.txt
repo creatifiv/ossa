@@ -1,0 +1,1 @@
+gemini session - fix for none notiify: gemini --resume 1bbd29f2-62b9-4caf-941c-4152e25a8df9 
