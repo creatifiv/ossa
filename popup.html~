@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ossa Controls</title>
+  <style>
+    :root {
+      --bg-dark: #313338;
+      --bg-panel: #2b2d31;
+      --text-normal: #dbdee1;
+      --blurple: #5865f2;
+      --blurple-hover: #4752c4;
+      --danger: #f23f43;
+      --danger-hover: #d83c3e;
+    }
+
+    body {
+      font-family: 'GG Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-normal);
+      margin: 0;
+      padding: 16px;
+      width: 220px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin: 0 0 4px 0;
+      color: #ffffff;
+      text-align: center;
+    }
+
+    button {
+      background-color: var(--blurple);
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      width: 100%;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: var(--blurple-hover);
+    }
+
+    button.secondary {
+      background-color: #4e5058;
+    }
+
+    button.secondary:hover {
+      background-color: #6d6f78;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h3>Ossa Panel</h3>
+    <!-- This ID "toggle" is required by popup.js to change text/state -->
+    <button id="toggle">Start Monitoring</button>
+    <button id="clearCache" class="secondary">Clear Cache</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
