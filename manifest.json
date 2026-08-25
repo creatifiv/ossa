@@ -6,7 +6,9 @@
   "permissions": [
     "alarms",
     "storage",
-    "notifications"
+    "notifications",
+    "tabs",
+    "debugger" 
   ],
   "host_permissions": [
     "<all_urls>"
