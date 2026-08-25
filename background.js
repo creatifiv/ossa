@@ -17,11 +17,39 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'checkPage') {
-        checkPage();
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === 'checkPage' && monitoring) {
+        await checkPage();
+
+        // Schedule the next check only after this one finishes.
+        if (monitoring) {
+            scheduleNextCheck();
+        }
     }
 });
+
+
+// ---------------------------------------------------------
+// Schedule next check
+// ---------------------------------------------------------
+
+function scheduleNextCheck() {
+    // Random interval between 3 and 10 minutes.
+    const minMinutes = 3;
+    const maxMinutes = 10;
+
+    const delay =
+        minMinutes +
+        Math.random() * (maxMinutes - minMinutes);
+
+    chrome.alarms.create('checkPage', {
+        delayInMinutes: delay
+    });
+
+    console.log(
+        `Next check scheduled in ${delay.toFixed(2)} minutes`
+    );
+}
 
 
 // ---------------------------------------------------------
@@ -31,11 +59,16 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 async function startMonitoring() {
     monitoring = true;
 
-    await chrome.alarms.create('checkPage', {
-        periodInMinutes: 5
-    });
+    // Prevent an old alarm from remaining active.
+    await chrome.alarms.clear('checkPage');
 
+    // Check immediately.
     await checkPage();
+
+    // Schedule the next random check.
+    if (monitoring) {
+        scheduleNextCheck();
+    }
 }
 
 
