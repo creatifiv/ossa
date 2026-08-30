@@ -18,12 +18,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
-// Schedule a randomized check between 5 and 20 minutes
+// Schedule a randomized check between 5 and 10 minutes
 function scheduleNextCheck() {
   if (!monitoring) return;
   
-  const minMinutes = 5;
-  const maxMinutes = 20;
+  const minMinutes = 1;
+  const maxMinutes = 10;
   const randomMinutes = Math.random() * (maxMinutes - minMinutes) + minMinutes;
 
   console.log(`Next check scheduled in approximately ${randomMinutes.toFixed(1)} minutes.`);
@@ -42,6 +42,7 @@ async function refreshAndCheckPage() {
     return;
   }
 
+  // Find an open tab matching your target URL
   chrome.tabs.query({ windowType: 'normal' }, async (tabs) => {
     const matchingTab = tabs.find(tab => tab.url && tab.url.includes(targetUrl));
 
@@ -53,6 +54,7 @@ async function refreshAndCheckPage() {
 
     const tabId = matchingTab.id;
 
+    // Automatically refresh the tab
     chrome.tabs.reload(tabId, () => {
       if (chrome.runtime.lastError) {
         console.warn('Reload warning:', chrome.runtime.lastError.message);
@@ -60,8 +62,10 @@ async function refreshAndCheckPage() {
         return;
       }
 
+      // Wait 15 seconds for the page to completely load and render
       setTimeout(async () => {
         try {
+          // Read visible elements + isolate Projects table data and content name
           const results = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: () => {
@@ -89,7 +93,6 @@ async function refreshAndCheckPage() {
                 if (targetContainer && isVisible(targetContainer)) {
                   tableHTML = targetContainer.innerHTML;
                   
-                  // Extract the first meaningful line of text as the content name
                   const textLines = targetContainer.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
                   if (textLines.length > 0) {
                     contentName = textLines[0];
@@ -114,7 +117,6 @@ async function refreshAndCheckPage() {
 
               let bodyHTML = walkDOM(document.body);
 
-              // Return an object instead of a concatenated string
               return { tableHTML, bodyHTML, contentName };
             }
           });
@@ -125,16 +127,12 @@ async function refreshAndCheckPage() {
             if (cachedContent) {
               let alertMessage = null;
               
-              // Check if the table specifically changed
               if (cachedContent.tableHTML !== currentData.tableHTML) {
                 alertMessage = `🕷️ **Ossa Alert:** Projects Table Updated!\n**Content:** ${currentData.contentName}`;
-              } 
-              // Otherwise, check if general page changed
-              else if (cachedContent.bodyHTML !== currentData.bodyHTML) {
+              } else if (cachedContent.bodyHTML !== currentData.bodyHTML) {
                 alertMessage = `🕷️ **Ossa Alert:** General visible page updates detected.`;
               }
 
-              // Send alert without any URLs
               if (alertMessage && discordWebhook) {
                 await sendDiscordAlert(discordWebhook, alertMessage);
               }
@@ -145,7 +143,9 @@ async function refreshAndCheckPage() {
         } catch (error) {
           console.error('Could not read reloaded tab:', error);
         } finally {
-          if (monitoring) scheduleNextCheck();
+          if (monitoring) {
+            scheduleNextCheck();
+          }
         }
       }, 15000); 
     });
@@ -157,8 +157,12 @@ async function sendDiscordAlert(webhookUrl, message) {
   try {
     await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: message })
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: message
+      })
     });
     console.log('Discord notification sent.');
   } catch (error) {

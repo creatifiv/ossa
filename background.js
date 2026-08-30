@@ -1,6 +1,5 @@
 let monitoring = false;
 
-// Listen for start/stop commands from popup.js
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'start') {
     monitoring = true;
@@ -11,14 +10,12 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-// Handle the background alarm event
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'checkPage' && monitoring) {
     refreshAndCheckPage();
   }
 });
 
-// Schedule a randomized check between 5 and 20 minutes
 function scheduleNextCheck() {
   if (!monitoring) return;
   
@@ -30,7 +27,6 @@ function scheduleNextCheck() {
   chrome.alarms.create('checkPage', { delayInMinutes: randomMinutes });
 }
 
-// Main function to refresh the open tab and check visible content + Projects table
 async function refreshAndCheckPage() {
   if (!monitoring) return;
 
@@ -77,7 +73,6 @@ async function refreshAndCheckPage() {
               let tableHTML = '';
               let contentName = 'Unknown Project Data';
 
-              // 1. Isolate Projects table and extract name
               const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, th, span, div'));
               const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
               
@@ -89,7 +84,6 @@ async function refreshAndCheckPage() {
                 if (targetContainer && isVisible(targetContainer)) {
                   tableHTML = targetContainer.innerHTML;
                   
-                  // Extract the first meaningful line of text as the content name
                   const textLines = targetContainer.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
                   if (textLines.length > 0) {
                     contentName = textLines[0];
@@ -97,7 +91,6 @@ async function refreshAndCheckPage() {
                 }
               }
 
-              // 2. Grab broader visible body elements
               const walkDOM = (node) => {
                 if (node.nodeType === Node.ELEMENT_NODE) {
                   if (!isVisible(node)) return '';
@@ -114,7 +107,6 @@ async function refreshAndCheckPage() {
 
               let bodyHTML = walkDOM(document.body);
 
-              // Return an object instead of a concatenated string
               return { tableHTML, bodyHTML, contentName };
             }
           });
@@ -125,16 +117,12 @@ async function refreshAndCheckPage() {
             if (cachedContent) {
               let alertMessage = null;
               
-              // Check if the table specifically changed
               if (cachedContent.tableHTML !== currentData.tableHTML) {
                 alertMessage = `🕷️ **Ossa Alert:** Projects Table Updated!\n**Content:** ${currentData.contentName}`;
-              } 
-              // Otherwise, check if general page changed
-              else if (cachedContent.bodyHTML !== currentData.bodyHTML) {
+              } else if (cachedContent.bodyHTML !== currentData.bodyHTML) {
                 alertMessage = `🕷️ **Ossa Alert:** General visible page updates detected.`;
               }
 
-              // Send alert without any URLs
               if (alertMessage && discordWebhook) {
                 await sendDiscordAlert(discordWebhook, alertMessage);
               }
@@ -145,20 +133,25 @@ async function refreshAndCheckPage() {
         } catch (error) {
           console.error('Could not read reloaded tab:', error);
         } finally {
-          if (monitoring) scheduleNextCheck();
+          if (monitoring) {
+            scheduleNextCheck();
+          }
         }
       }, 15000); 
     });
   });
 }
 
-// Send tailored alert to Discord webhook
 async function sendDiscordAlert(webhookUrl, message) {
   try {
     await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: message })
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: message
+      })
     });
     console.log('Discord notification sent.');
   } catch (error) {
