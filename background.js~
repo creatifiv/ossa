@@ -22,8 +22,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 function scheduleNextCheck() {
   if (!monitoring) return;
   
-  const minMinutes = 1;
-  const maxMinutes = 10;
+  const minMinutes = 5;
+  const maxMinutes = 20;
   const randomMinutes = Math.random() * (maxMinutes - minMinutes) + minMinutes;
 
   console.log(`Next check scheduled in approximately ${randomMinutes.toFixed(1)} minutes.`);
