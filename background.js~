@@ -1,26 +1,32 @@
-let monitoring = false;
+// Helper functions to persist monitoring state across service worker restarts
+async function setMonitoring(status) {
+  await chrome.storage.local.set({ monitoring: status });
+}
 
-// Listen for start/stop commands from popup.js
-chrome.runtime.onMessage.addListener((message) => {
+async function getMonitoring() {
+  const data = await chrome.storage.local.get('monitoring');
+  return !!data.monitoring;
+}
+
+chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action === 'start') {
-    monitoring = true;
+    await setMonitoring(true);
     scheduleNextCheck();
   } else if (message.action === 'stop') {
-    monitoring = false;
+    await setMonitoring(false);
     chrome.alarms.clear('checkPage');
+    console.log('Monitoring stopped.');
   }
 });
 
-// Handle the background alarm event
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'checkPage' && monitoring) {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'checkPage' && (await getMonitoring())) {
     refreshAndCheckPage();
   }
 });
 
-// Schedule a randomized check between 5 and 10 minutes
-function scheduleNextCheck() {
-  if (!monitoring) return;
+async function scheduleNextCheck() {
+  if (!(await getMonitoring())) return;
   
   const minMinutes = 1;
   const maxMinutes = 10;
@@ -30,9 +36,8 @@ function scheduleNextCheck() {
   chrome.alarms.create('checkPage', { delayInMinutes: randomMinutes });
 }
 
-// Main function to refresh the open tab and check visible content + Projects table
 async function refreshAndCheckPage() {
-  if (!monitoring) return;
+  if (!(await getMonitoring())) return;
 
   const { targetUrl, discordWebhook } = await chrome.storage.sync.get(['targetUrl', 'discordWebhook']);
   const { cachedContent } = await chrome.storage.local.get('cachedContent');
@@ -42,7 +47,6 @@ async function refreshAndCheckPage() {
     return;
   }
 
-  // Find an open tab matching your target URL
   chrome.tabs.query({ windowType: 'normal' }, async (tabs) => {
     const matchingTab = tabs.find(tab => tab.url && tab.url.includes(targetUrl));
 
@@ -54,7 +58,6 @@ async function refreshAndCheckPage() {
 
     const tabId = matchingTab.id;
 
-    // Automatically refresh the tab
     chrome.tabs.reload(tabId, () => {
       if (chrome.runtime.lastError) {
         console.warn('Reload warning:', chrome.runtime.lastError.message);
@@ -62,67 +65,57 @@ async function refreshAndCheckPage() {
         return;
       }
 
-      // Wait 15 seconds for the page to completely load and render
       setTimeout(async () => {
         try {
-          // Read visible elements + isolate Projects table data and content name
+          // 1. Only extract the raw HTML string from the live page
           const results = await chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: () => {
-              function isVisible(el) {
-                if (!el) return false;
-                const style = window.getComputedStyle(el);
-                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-                  return false;
-                }
-                return el.parentElement ? isVisible(el.parentElement) : true;
-              }
-
-              let tableHTML = '';
-              let contentName = 'Unknown Project Data';
-
-              // 1. Isolate Projects table and extract name
-              const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, th, span, div'));
-              const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
-              
-              if (projectsHeading) {
-                let targetContainer = projectsHeading.nextElementSibling;
-                while (targetContainer && targetContainer.tagName !== 'TABLE' && targetContainer.tagName !== 'DIV') {
-                  targetContainer = targetContainer.nextElementSibling;
-                }
-                if (targetContainer && isVisible(targetContainer)) {
-                  tableHTML = targetContainer.innerHTML;
-                  
-                  const textLines = targetContainer.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
-                  if (textLines.length > 0) {
-                    contentName = textLines[0];
-                  }
-                }
-              }
-
-              // 2. Grab broader visible body elements
-              const walkDOM = (node) => {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                  if (!isVisible(node)) return '';
-                  let innerStr = '';
-                  for (let child of node.childNodes) {
-                    innerStr += walkDOM(child);
-                  }
-                  return `<${node.tagName}>${innerStr}</${node.tagName}>`;
-                } else if (node.nodeType === Node.TEXT_NODE) {
-                  return node.textContent.trim();
-                }
-                return '';
-              };
-
-              let bodyHTML = walkDOM(document.body);
-
-              return { tableHTML, bodyHTML, contentName };
-            }
+            func: () => document.documentElement.outerHTML
           });
 
           if (results && results[0]) {
-            const currentData = results[0].result;
+            const rawHtml = results[0].result;
+
+            // 2. Parse and scan the HTML entirely offline in the service worker
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, 'text/html');
+
+            let tableHTML = '';
+            let contentName = 'Unknown Project Data';
+
+            const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, th, span, div'));
+            const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
+            
+            if (projectsHeading) {
+              let targetContainer = projectsHeading.nextElementSibling;
+              while (targetContainer && targetContainer.tagName !== 'TABLE' && targetContainer.tagName !== 'DIV') {
+                targetContainer = targetContainer.nextElementSibling;
+              }
+              if (targetContainer) {
+                tableHTML = targetContainer.innerHTML;
+                
+                const textLines = targetContainer.textContent.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+                if (textLines.length > 0) {
+                  contentName = textLines[0];
+                }
+              }
+            }
+
+            const walkDOM = (node) => {
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                let innerStr = '';
+                for (let child of node.childNodes) {
+                  innerStr += walkDOM(child);
+                }
+                return `<${node.tagName}>${innerStr}</${node.tagName}>`;
+              } else if (node.nodeType === Node.TEXT_NODE) {
+                return node.textContent.trim();
+              }
+              return '';
+            };
+
+            let bodyHTML = walkDOM(doc.body);
+            const currentData = { tableHTML, bodyHTML, contentName };
 
             if (cachedContent) {
               let alertMessage = null;
@@ -143,7 +136,7 @@ async function refreshAndCheckPage() {
         } catch (error) {
           console.error('Could not read reloaded tab:', error);
         } finally {
-          if (monitoring) {
+          if (await getMonitoring()) {
             scheduleNextCheck();
           }
         }
@@ -152,7 +145,6 @@ async function refreshAndCheckPage() {
   });
 }
 
-// Send tailored alert to Discord webhook
 async function sendDiscordAlert(webhookUrl, message) {
   try {
     await fetch(webhookUrl, {

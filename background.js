@@ -1,23 +1,32 @@
-let monitoring = false;
+// Helper functions to persist monitoring state across service worker restarts
+async function setMonitoring(status) {
+  await chrome.storage.local.set({ monitoring: status });
+}
 
-chrome.runtime.onMessage.addListener((message) => {
+async function getMonitoring() {
+  const data = await chrome.storage.local.get('monitoring');
+  return !!data.monitoring;
+}
+
+chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action === 'start') {
-    monitoring = true;
+    await setMonitoring(true);
     scheduleNextCheck();
   } else if (message.action === 'stop') {
-    monitoring = false;
+    await setMonitoring(false);
     chrome.alarms.clear('checkPage');
+    console.log('Monitoring stopped.');
   }
 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'checkPage' && monitoring) {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'checkPage' && (await getMonitoring())) {
     refreshAndCheckPage();
   }
 });
 
-function scheduleNextCheck() {
-  if (!monitoring) return;
+async function scheduleNextCheck() {
+  if (!(await getMonitoring())) return;
   
   const minMinutes = 1;
   const maxMinutes = 10;
@@ -28,7 +37,7 @@ function scheduleNextCheck() {
 }
 
 async function refreshAndCheckPage() {
-  if (!monitoring) return;
+  if (!(await getMonitoring())) return;
 
   const { targetUrl, discordWebhook } = await chrome.storage.sync.get(['targetUrl', 'discordWebhook']);
   const { cachedContent } = await chrome.storage.local.get('cachedContent');
@@ -133,7 +142,7 @@ async function refreshAndCheckPage() {
         } catch (error) {
           console.error('Could not read reloaded tab:', error);
         } finally {
-          if (monitoring) {
+          if (await getMonitoring()) {
             scheduleNextCheck();
           }
         }

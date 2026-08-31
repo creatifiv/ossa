@@ -1,3 +1,4 @@
+
 {
   "manifest_version": 3,
   "name": "Web Monitor",
@@ -8,8 +9,7 @@
     "storage",
     "notifications",
     "tabs",
-    "scripting",
-    "debugger"
+    "debugger" 
   ],
   "host_permissions": [
     "<all_urls>"
