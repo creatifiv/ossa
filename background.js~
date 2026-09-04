@@ -67,55 +67,61 @@ async function refreshAndCheckPage() {
 
       setTimeout(async () => {
         try {
-          // 1. Only extract the raw HTML string from the live page
           const results = await chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: () => document.documentElement.outerHTML
+            func: () => {
+              function isVisible(el) {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                  return false;
+                }
+                return el.parentElement ? isVisible(el.parentElement) : true;
+              }
+
+              let tableHTML = '';
+              let contentName = 'Unknown Project Data';
+
+              const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, th, span, div'));
+              const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
+              
+              if (projectsHeading) {
+                let targetContainer = projectsHeading.nextElementSibling;
+                while (targetContainer && targetContainer.tagName !== 'TABLE' && targetContainer.tagName !== 'DIV') {
+                  targetContainer = targetContainer.nextElementSibling;
+                }
+                if (targetContainer && isVisible(targetContainer)) {
+                  tableHTML = targetContainer.innerHTML;
+                  
+                  const textLines = targetContainer.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+                  if (textLines.length > 0) {
+                    contentName = textLines[0];
+                  }
+                }
+              }
+
+              const walkDOM = (node) => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  if (!isVisible(node)) return '';
+                  let innerStr = '';
+                  for (let child of node.childNodes) {
+                    innerStr += walkDOM(child);
+                  }
+                  return `<${node.tagName}>${innerStr}</${node.tagName}>`;
+                } else if (node.nodeType === Node.TEXT_NODE) {
+                  return node.textContent.trim();
+                }
+                return '';
+              };
+
+              let bodyHTML = walkDOM(document.body);
+
+              return { tableHTML, bodyHTML, contentName };
+            }
           });
 
           if (results && results[0]) {
-            const rawHtml = results[0].result;
-
-            // 2. Parse and scan the HTML entirely offline in the service worker
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(rawHtml, 'text/html');
-
-            let tableHTML = '';
-            let contentName = 'Unknown Project Data';
-
-            const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, th, span, div'));
-            const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
-            
-            if (projectsHeading) {
-              let targetContainer = projectsHeading.nextElementSibling;
-              while (targetContainer && targetContainer.tagName !== 'TABLE' && targetContainer.tagName !== 'DIV') {
-                targetContainer = targetContainer.nextElementSibling;
-              }
-              if (targetContainer) {
-                tableHTML = targetContainer.innerHTML;
-                
-                const textLines = targetContainer.textContent.split('\n').map(t => t.trim()).filter(t => t.length > 0);
-                if (textLines.length > 0) {
-                  contentName = textLines[0];
-                }
-              }
-            }
-
-            const walkDOM = (node) => {
-              if (node.nodeType === Node.ELEMENT_NODE) {
-                let innerStr = '';
-                for (let child of node.childNodes) {
-                  innerStr += walkDOM(child);
-                }
-                return `<${node.tagName}>${innerStr}</${node.tagName}>`;
-              } else if (node.nodeType === Node.TEXT_NODE) {
-                return node.textContent.trim();
-              }
-              return '';
-            };
-
-            let bodyHTML = walkDOM(doc.body);
-            const currentData = { tableHTML, bodyHTML, contentName };
+            const currentData = results[0].result;
 
             if (cachedContent) {
               let alertMessage = null;
