@@ -29,7 +29,7 @@ async function scheduleNextCheck() {
   if (!(await getMonitoring())) return;
   
   const minMinutes = 1;
-  const maxMinutes = 10;
+  const maxMinutes = 5;
   const randomMinutes = Math.random() * (maxMinutes - minMinutes) + minMinutes;
 
   console.log(`Next check scheduled in approximately ${randomMinutes.toFixed(1)} minutes.`);
@@ -79,33 +79,15 @@ async function refreshAndCheckPage() {
                 return el.parentElement ? isVisible(el.parentElement) : true;
               }
 
-              let tableHTML = '';
-              let contentName = 'Unknown Project Data';
-
-              const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, th, span, div'));
-              const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
-              
-              if (projectsHeading) {
-                let targetContainer = projectsHeading.nextElementSibling;
-                while (targetContainer && targetContainer.tagName !== 'TABLE' && targetContainer.tagName !== 'DIV') {
-                  targetContainer = targetContainer.nextElementSibling;
-                }
-                if (targetContainer && isVisible(targetContainer)) {
-                  tableHTML = targetContainer.innerHTML;
-                  
-                  const textLines = targetContainer.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
-                  if (textLines.length > 0) {
-                    contentName = textLines[0];
-                  }
-                }
-              }
-
               const walkDOM = (node) => {
                 if (node.nodeType === Node.ELEMENT_NODE) {
                   if (!isVisible(node)) return '';
                   let innerStr = '';
                   for (let child of node.childNodes) {
                     innerStr += walkDOM(child);
+                  }
+                  if (node.tagName === 'A') {
+                    return `<A href="${node.href}">${innerStr}</A>`;
                   }
                   return `<${node.tagName}>${innerStr}</${node.tagName}>`;
                 } else if (node.nodeType === Node.TEXT_NODE) {
@@ -114,9 +96,37 @@ async function refreshAndCheckPage() {
                 return '';
               };
 
-              let bodyHTML = walkDOM(document.body);
+              let sectionHTML = '';
+              let links = [];
 
-              return { tableHTML, bodyHTML, contentName };
+              const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, th, span, div'));
+              const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
+              
+              if (projectsHeading) {
+                // Gather everything AFTER the Projects heading until the next heading
+                let sibling = projectsHeading.nextElementSibling;
+                while (sibling && !['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(sibling.tagName)) {
+                  if (isVisible(sibling)) {
+                    // Capture structural HTML
+                    sectionHTML += walkDOM(sibling);
+                    
+                    // Dig into the sibling to grab any embedded links
+                    const innerLinks = Array.from(sibling.querySelectorAll('a'))
+                      .filter(isVisible)
+                      .map(a => a.href);
+                    links.push(...innerLinks);
+
+                    // Catch edge cases where the sibling itself is a direct link
+                    if (sibling.tagName === 'A') {
+                      links.push(sibling.href);
+                    }
+                  }
+                  sibling = sibling.nextElementSibling;
+                }
+              }
+
+              // Return structure and a clean set of URLs
+              return { tableHTML: sectionHTML, links: [...new Set(links)] };
             }
           });
 
@@ -127,9 +137,18 @@ async function refreshAndCheckPage() {
               let alertMessage = null;
               
               if (cachedContent.tableHTML !== currentData.tableHTML) {
-                alertMessage = `🕷️ **Ossa Alert:** Projects Table Updated!\n**Content:** ${currentData.contentName}`;
-              } else if (cachedContent.bodyHTML !== currentData.bodyHTML) {
-                alertMessage = `🕷️ **Ossa Alert:** General visible page updates detected.`;
+                
+                const oldLinks = cachedContent.links || [];
+                const newLinks = currentData.links || [];
+                
+                // Compare arrays to find if a URL was added
+                const hasNewLink = newLinks.some(link => !oldLinks.includes(link));
+
+                if (hasNewLink) {
+                  alertMessage = `🕷️ **Ossa Alert:** **New Project**`;
+                } else {
+                  alertMessage = `🕷️ **Ossa Alert:** change detected`;
+                }
               }
 
               if (alertMessage && discordWebhook) {

@@ -29,7 +29,7 @@ async function scheduleNextCheck() {
   if (!(await getMonitoring())) return;
   
   const minMinutes = 1;
-  const maxMinutes = 10;
+  const maxMinutes = 5;
   const randomMinutes = Math.random() * (maxMinutes - minMinutes) + minMinutes;
 
   console.log(`Next check scheduled in approximately ${randomMinutes.toFixed(1)} minutes.`);
@@ -79,8 +79,25 @@ async function refreshAndCheckPage() {
                 return el.parentElement ? isVisible(el.parentElement) : true;
               }
 
+              const walkDOM = (node) => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  if (!isVisible(node)) return '';
+                  let innerStr = '';
+                  for (let child of node.childNodes) {
+                    innerStr += walkDOM(child);
+                  }
+                  if (node.tagName === 'A') {
+                    return `<A href="${node.href}">${innerStr}</A>`;
+                  }
+                  return `<${node.tagName}>${innerStr}</${node.tagName}>`;
+                } else if (node.nodeType === Node.TEXT_NODE) {
+                  return node.textContent.trim();
+                }
+                return '';
+              };
+
               let tableHTML = '';
-              let contentName = 'Unknown Project Data';
+              let links = [];
 
               const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, th, span, div'));
               const projectsHeading = headings.find(el => el.textContent.trim() === 'Projects');
@@ -90,33 +107,19 @@ async function refreshAndCheckPage() {
                 while (targetContainer && targetContainer.tagName !== 'TABLE' && targetContainer.tagName !== 'DIV') {
                   targetContainer = targetContainer.nextElementSibling;
                 }
+                
                 if (targetContainer && isVisible(targetContainer)) {
-                  tableHTML = targetContainer.innerHTML;
+                  // Capture the visual structure to detect general changes
+                  tableHTML = walkDOM(targetContainer);
                   
-                  const textLines = targetContainer.innerText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
-                  if (textLines.length > 0) {
-                    contentName = textLines[0];
-                  }
+                  // Extract just the link URLs to determine if a NEW project was added
+                  links = Array.from(targetContainer.querySelectorAll('a'))
+                    .filter(isVisible)
+                    .map(a => a.href);
                 }
               }
 
-              const walkDOM = (node) => {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                  if (!isVisible(node)) return '';
-                  let innerStr = '';
-                  for (let child of node.childNodes) {
-                    innerStr += walkDOM(child);
-                  }
-                  return `<${node.tagName}>${innerStr}</${node.tagName}>`;
-                } else if (node.nodeType === Node.TEXT_NODE) {
-                  return node.textContent.trim();
-                }
-                return '';
-              };
-
-              let bodyHTML = walkDOM(document.body);
-
-              return { tableHTML, bodyHTML, contentName };
+              return { tableHTML, links };
             }
           });
 
@@ -126,10 +129,20 @@ async function refreshAndCheckPage() {
             if (cachedContent) {
               let alertMessage = null;
               
+              // Only process if the table structure specifically changed
               if (cachedContent.tableHTML !== currentData.tableHTML) {
-                alertMessage = `🕷️ **Ossa Alert:** Projects Table Updated!\n**Content:** ${currentData.contentName}`;
-              } else if (cachedContent.bodyHTML !== currentData.bodyHTML) {
-                alertMessage = `🕷️ **Ossa Alert:** General visible page updates detected.`;
+                
+                const oldLinks = cachedContent.links || [];
+                const newLinks = currentData.links || [];
+                
+                // Check if the new data contains a link that wasn't in the old data
+                const hasNewLink = newLinks.some(link => !oldLinks.includes(link));
+
+                if (hasNewLink) {
+                  alertMessage = `🕷️ **Ossa Alert:** **New Project**`;
+                } else {
+                  alertMessage = `🕷️ **Ossa Alert:** change detected`;
+                }
               }
 
               if (alertMessage && discordWebhook) {
